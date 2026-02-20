@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2026 Tracker with Notes</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1a1a1a;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            margin: 0;
+        }
+
+        h1 { margin-bottom: 5px; }
+        p.subtitle { color: #888; font-size: 0.9rem; margin-bottom: 20px; }
+
+        #status {
+            margin-bottom: 20px;
+            font-size: 1.1rem;
+            color: #cccccc;
+        }
+
+        /* --- GRID STYLES --- */
+        .dots-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(18px, 1fr));
+            gap: 8px;
+            width: 100%;
+            max-width: 900px;
+            background-color: #252525;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            position: relative;
+        }
+
+        .dot {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background-color: #333;
+            cursor: pointer;
+            transition: transform 0.2s, border 0.2s;
+            position: relative;
+        }
+
+        .dot:hover {
+            transform: scale(1.3);
+            border: 2px solid white;
+            z-index: 10;
+        }
+
+        /* Dot Colors */
+        .dot.remaining { background-color: #00e676; box-shadow: 0 0 2px #00e676; } /* Green */
+        .dot.passed { background-color: #ff1744; opacity: 0.9; } /* Red */
+        
+        /* Indicator that a dot has a note (small white center) */
+        .dot.has-note::after {
+            content: '';
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 6px; height: 6px;
+            background-color: white;
+            border-radius: 50%;
+        }
+
+        /* --- CUSTOM TOOLTIP --- */
+        #custom-tooltip {
+            position: fixed;
+            background-color: rgba(0, 0, 0, 0.9);
+            border: 1px solid #555;
+            color: #fff;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 0.9rem;
+            pointer-events: none; /* Mouse ignores it so it doesn't flicker */
+            display: none;
+            z-index: 1000;
+            max-width: 250px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            white-space: pre-wrap; /* Allows line breaks in comments */
+        }
+        .tooltip-date { font-weight: bold; color: #aaa; margin-bottom: 5px; display: block; border-bottom: 1px solid #444; padding-bottom: 3px;}
+        .tooltip-note { color: #fff; font-style: italic; }
+
+        /* --- MODAL FOR EDITING --- */
+        #modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal {
+            background: #333;
+            padding: 20px;
+            border-radius: 10px;
+            width: 300px;
+            text-align: center;
+            box-shadow: 0 0 20px rgba(0,0,0,0.8);
+        }
+
+        .modal h3 { margin-top: 0; color: #eee; }
+        
+        textarea {
+            width: 100%;
+            height: 100px;
+            background: #222;
+            color: white;
+            border: 1px solid #555;
+            border-radius: 5px;
+            padding: 10px;
+            box-sizing: border-box;
+            resize: vertical;
+            margin-bottom: 15px;
+        }
+
+        .modal-buttons button {
+            padding: 8px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .btn-save { background-color: #00e676; color: #000; margin-right: 10px; }
+        .btn-cancel { background-color: #ff1744; color: white; }
+
+        /* --- LEGEND --- */
+        .legend { display: flex; gap: 20px; margin-top: 20px; font-size: 0.9rem; flex-wrap: wrap; justify-content: center;}
+        .legend-item { display: flex; align-items: center; gap: 8px; }
+        .legend-dot { width: 12px; height: 12px; border-radius: 50%; }
+        .legend-dot-note { width: 12px; height: 12px; border-radius: 50%; background: #555; position: relative; border: 1px solid #999;}
+        .legend-dot-note::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 4px; height: 4px; background: white; border-radius: 50%; }
+
+    </style>
+</head>
+<body>
+
+    <h1>2026 Life Tracker</h1>
+    <p class="subtitle">Click a dot to add a note. Hover to read it.</p>
+    <div id="status">Syncing with internet time...</div>
+
+    <div class="dots-container" id="grid">
+        <!-- Dots generated here -->
+    </div>
+
+    <!-- Custom Tooltip Element -->
+    <div id="custom-tooltip"></div>
+
+    <div class="legend">
+        <div class="legend-item">
+            <div class="legend-dot" style="background-color: #ff1744;"></div>
+            <span>Passed (Red)</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-dot" style="background-color: #00e676;"></div>
+            <span>Remaining (Green)</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-dot-note"></div>
+            <span>Has Note (White Center)</span>
+        </div>
+    </div>
+
+    <!-- Edit Note Modal -->
+    <div id="modal-overlay">
+        <div class="modal">
+            <h3 id="modal-title">Day X</h3>
+            <textarea id="note-input" placeholder="What happened today?"></textarea>
+            <div class="modal-buttons">
+                <button class="btn-save" onclick="saveNote()">Save Note</button>
+                <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const grid = document.getElementById('grid');
+        const statusText = document.getElementById('status');
+        const tooltip = document.getElementById('custom-tooltip');
+        const modalOverlay = document.getElementById('modal-overlay');
+        const modalTitle = document.getElementById('modal-title');
+        const noteInput = document.getElementById('note-input');
+
+        const TARGET_YEAR = 2026;
+        const DAYS_IN_YEAR = 365;
+        
+        // We need a variable to track which dot is currently being edited
+        let currentEditingDay = null;
+
+        // Load notes from Browser LocalStorage
+        let userNotes = JSON.parse(localStorage.getItem('2026_notes')) || {};
+
+        // Helper: Get formatted date string for a specific day number of 2026
+        function getDateForDay(dayNumber) {
+            const date = new Date(TARGET_YEAR, 0, dayNumber); // Jan is 0
+            const options = { weekday: 'short', month: 'short', day: 'numeric' };
+            return date.toLocaleDateString('en-US', options);
+        }
+
+        function renderDots(daysPassed) {
+            grid.innerHTML = '';
+            
+            let filledCount = 0;
+            if (daysPassed === "ALL_FUTURE") filledCount = 0;
+            else if (daysPassed === "ALL_PAST") filledCount = DAYS_IN_YEAR;
+            else filledCount = daysPassed;
+
+            for (let i = 1; i <= DAYS_IN_YEAR; i++) {
+                const dot = document.createElement('div');
+                dot.classList.add('dot');
+                
+                // Color Logic
+                if (i <= filledCount) dot.classList.add('passed');
+                else dot.classList.add('remaining');
+
+                // Check if this day has a note
+                if (userNotes[i]) {
+                    dot.classList.add('has-note');
+                }
+
+                // --- EVENTS ---
+
+                // 1. Mouse Enter (Show Tooltip)
+                dot.addEventListener('mouseenter', (e) => {
+                    const dateStr = getDateForDay(i);
+                    const note = userNotes[i] ? `\n"${userNotes[i]}"` : '\n(No note)';
+                    
+                    tooltip.innerHTML = `<span class="tooltip-date">${dateStr}, ${TARGET_YEAR}</span><span class="tooltip-note">${note}</span>`;
+                    tooltip.style.display = 'block';
+                    
+                    // Position tooltip near mouse but not covering it
+                    moveTooltip(e); 
+                });
+
+                // 2. Mouse Move (Follow Mouse)
+                dot.addEventListener('mousemove', moveTooltip);
+
+                // 3. Mouse Leave (Hide Tooltip)
+                dot.addEventListener('mouseleave', () => {
+                    tooltip.style.display = 'none';
+                });
+
+                // 4. Click (Open Modal)
+                dot.addEventListener('click', () => {
+                    openModal(i);
+                });
+
+                grid.appendChild(dot);
+            }
+
+            // Update Status Text
+            if (daysPassed === "ALL_FUTURE") {
+                statusText.innerText = "Waiting for 2026 to start.";
+            } else if (daysPassed === "ALL_PAST") {
+                statusText.innerText = "2026 has passed.";
+            } else {
+                statusText.innerText = `Today is ${getDateForDay(filledCount)}. (${DAYS_IN_YEAR - filledCount}) days left.`;
+            }
+        }
+
+        // Helper to move tooltip
+        function moveTooltip(e) {
+            const x = e.clientX;
+            const y = e.clientY;
+            
+            // Offset slightly so cursor doesn't cover text
+            tooltip.style.left = (x + 15) + 'px';
+            tooltip.style.top = (y + 15) + 'px';
+        }
+
+        // --- MODAL FUNCTIONS ---
+
+        function openModal(dayIndex) {
+            currentEditingDay = dayIndex;
+            const dateStr = getDateForDay(dayIndex);
+            modalTitle.innerText = `Edit: ${dateStr}`;
+            
+            // Load existing note into textarea if it exists
+            noteInput.value = userNotes[dayIndex] || "";
+            
+            modalOverlay.style.display = 'flex';
+            noteInput.focus();
+        }
+
+        function closeModal() {
+            modalOverlay.style.display = 'none';
+            currentEditingDay = null;
+        }
+
+        function saveNote() {
+            if (currentEditingDay !== null) {
+                const text = noteInput.value.trim();
+                
+                if (text) {
+                    userNotes[currentEditingDay] = text;
+                } else {
+                    // If empty, delete the key to save space/remove indicator
+                    delete userNotes[currentEditingDay];
+                }
+
+                // Save to browser memory
+                localStorage.setItem('2026_notes', JSON.stringify(userNotes));
+                
+                // Refresh grid to show/hide "has-note" indicator
+                // We re-run the init logic effectively, but since date hasn't changed, 
+                // we can just re-render based on current knowledge.
+                // However, easier to just trigger init() or reload, 
+                // but let's just re-render with cached state for smoothness.
+                const dot = grid.children[currentEditingDay - 1];
+                if (text) dot.classList.add('has-note');
+                else dot.classList.remove('has-note');
+
+                closeModal();
+            }
+        }
+
+        // Close modal if clicking outside the box
+        modalOverlay.addEventListener('click', (e) => {
+            if (e.target === modalOverlay) closeModal();
+        });
+
+        // --- MAIN LOGIC ---
+
+        async function init() {
+            let currentDate;
+            try {
+                // Fetch Internet Time
+                const response = await fetch('https://worldtimeapi.org/api/ip');
+                const data = await response.json();
+                currentDate = new Date(data.datetime);
+                console.log("Internet Time Fetched");
+            } catch (error) {
+                console.log("Using System Time");
+                currentDate = new Date();
+            }
+
+            const currentYear = currentDate.getFullYear();
+
+            if (currentYear < TARGET_YEAR) {
+                renderDots("ALL_FUTURE");
+            } else if (currentYear > TARGET_YEAR) {
+                renderDots("ALL_PAST");
+            } else {
+                const startOfYear = new Date(TARGET_YEAR, 0, 1);
+                const diffInTime = currentDate.getTime() - startOfYear.getTime();
+                const daysPassed = Math.floor(diffInTime / (1000 * 3600 * 24)) + 1;
+                renderDots(daysPassed);
+            }
+        }
+
+        init();
+
+    </script>
+</body>
+</html>
